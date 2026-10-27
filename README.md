@@ -9,6 +9,8 @@ Official Python SDK for [textbee.dev](https://textbee.dev), the open source SMS 
 
 Zero dependencies, fully typed, works on Python 3.9+.
 
+Writing JavaScript or TypeScript? Use the official [JavaScript SDK](https://github.com/textbee/textbee-js): `npm install @textbee/sdk`.
+
 ## Install
 
 ```bash
