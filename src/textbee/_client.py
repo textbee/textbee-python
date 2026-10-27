@@ -53,13 +53,13 @@ class Textbee:
         ``x-api-key`` header.
 
         ``base_url`` points the client at a self-hosted instance instead of
-        ``https://api.textbee.dev/api/v1``. A bare origin such as
-        ``https://sms.example.com`` gets ``/api/v1`` added. A URL that contains
-        ``/api/v1`` is cut there, so a pasted endpoint URL still works. Any
-        other path is used as given, for proxies that map a prefix onto the
-        API. A value with no scheme gets ``https://``. An invalid URL raises
-        ``ValueError`` rather than falling back, so a typo never sends your key
-        to the public API.
+        ``https://api.textbee.dev/api/v1``. ``/api/v1`` is added unless the
+        path already contains it, so ``https://sms.example.com`` and
+        ``https://example.com/textbee`` both work. A URL that contains
+        ``/api/v1`` is cut there, so a pasted endpoint URL still works. A value
+        with no scheme gets ``https://``. An invalid URL raises ``ValueError``
+        rather than falling back, so a typo never sends your key to the public
+        API.
 
         ``timeout`` is in seconds and applies to each connect and read, not to
         the request as a whole.
@@ -340,8 +340,8 @@ def _data(payload: dict[str, Any]) -> Any:
 def _normalize_base_url(raw: str | None) -> str:
     """Resolve the API root from a base URL. Same rule as textbee-js.
 
-    A bare origin gets /api/v1, a path containing /api/v1 is cut there, and
-    any other path is kept as given for proxies that map a prefix onto the API.
+    /api/v1 is added unless the path already contains it, and a path that
+    contains /api/v1 is cut there.
     """
     value = (raw or "").strip()
     if not value:
@@ -383,13 +383,9 @@ def _normalize_base_url(raw: str | None) -> str:
             cut = index + 2
             break
 
-    if not segments:
-        path = ["api", "v1"]
-    elif cut == -1:
-        path = segments
-    else:
-        # Anything after /api/v1 is a route, not part of the root, so it is dropped.
-        path = [*segments[: cut - 2], "api", "v1"]
+    # Anything after /api/v1 is a route, not part of the root, so it is dropped.
+    root = segments if cut == -1 else segments[: cut - 2]
+    path = [*root, "api", "v1"]
 
     return "/".join([origin, *(quote(segment, safe=_PATH_SAFE) for segment in path)])
 

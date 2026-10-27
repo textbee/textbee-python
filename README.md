@@ -9,6 +9,8 @@ Official Python SDK for [textbee.dev](https://textbee.dev), the open source SMS 
 
 Zero dependencies, fully typed, works on Python 3.9+.
 
+Writing JavaScript or TypeScript? Use the official [JavaScript SDK](https://github.com/textbee/textbee-js): `npm install @textbee/sdk`.
+
 ## Install
 
 ```bash
@@ -262,7 +264,7 @@ Textbee(api_key=api_key, base_url="https://sms.example.com/api/v1")
 Textbee(api_key=api_key, base_url="http://localhost:3001")
 ```
 
-If the API sits under a path prefix, give the full path, for example `https://example.com/textbee/api/v1`. Any path other than `/api/v1` is used as given, so a proxy that maps `/sms` onto the API works with `https://example.com/sms`. A value with no scheme gets `https://`. An invalid URL, or one with a username or password, raises `ValueError` instead of falling back to the hosted API, so a typo never sends your key to textbee.dev.
+If the API sits under a path prefix, give the prefix: `https://example.com/textbee` reaches `https://example.com/textbee/api/v1`. The SDK adds `/api/v1` unless the path already contains it, the same rule the textbee MCP server uses for `TEXTBEE_BASE_URL`. A value with no scheme gets `https://`. An invalid URL, or one with a username or password, raises `ValueError` instead of falling back to the hosted API, so a typo never sends your key to textbee.dev.
 
 ## What is not covered yet
 
