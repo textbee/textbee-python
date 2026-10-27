@@ -1,0 +1,171 @@
+# Releasing is driven by __version__ in src/textbee/_version.py.
+#
+# Bump it, merge it to main, and this publishes it. The pull request carrying
+# the bump is the release proposal: reviewing and merging it is the approval
+# step, so there is no bot pull request on top of it.
+#
+# The guard compares the version against the git tags, not against the
+# previous commit, so the job is idempotent. Pushes that do not change the
+# version are a no-op, and a failed release can be retried by pushing again.
+#
+# Jobs are split by privilege. Only the publish job can mint a PyPI token, and
+# it runs nothing but the publish action. Actions are pinned to commit SHAs.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never let two releases run at once, and never cancel one midway: an
+# interrupted run can leave a version on PyPI with no tag behind it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check for an unreleased version
+    # A dispatch from any other branch must never publish.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Tags are the record of what has shipped, so fetch all of them.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare the package version against existing tags
+        id: check
+        run: |
+          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/textbee/_version.py)"
+          if [ -z "$version" ]; then
+            echo "Could not read __version__ from src/textbee/_version.py" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "v$version is already tagged, nothing to release."
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "v$version has no tag yet, releasing."
+          fi
+
+  build:
+    name: Build v${{ needs.check.outputs.version }}
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No cache: a release builds from a clean slate.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: false
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Typecheck
+        run: uv run mypy
+
+      - name: Unit test
+        run: uv run pytest
+
+      # The oldest supported Python, so a 3.9-only break cannot publish.
+      - name: Unit test on Python 3.9
+        run: uv run --isolated --python 3.9 --group dev pytest
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish v${{ needs.check.outputs.version }} to PyPI
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Must match the environment named in the PyPI trusted publisher.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/textbee/${{ needs.check.outputs.version }}/
+    permissions:
+      # Minting the OIDC token PyPI exchanges for a publish credential.
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      # PyPI publish runs before tagging on purpose. If it fails there is no
+      # tag, so the next push retries cleanly. skip-existing lets that retry
+      # move on to tagging when an earlier run already uploaded the files.
+      #
+      # No token: the OIDC exchange authenticates this publish, and the action
+      # attaches PEP 740 attestations automatically.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          skip-existing: true
+
+  github-release:
+    name: Tag and release v${{ needs.check.outputs.version }}
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Creating the tag and the GitHub release.
+      contents: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      # Creates the tag as well as the release. Notes are generated from the
+      # commits since the previous tag.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --generate-notes \
+            dist/*

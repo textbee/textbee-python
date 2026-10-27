@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+
+tone_instructions: >-
+  Be direct and concise. Never use em dashes or en dashes in any comment,
+  summary, or suggested code. Use periods, commas, colons, or parentheses.
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords:
+      - WIP
+      - DO NOT MERGE
+
+  path_filters:
+    - '!**/.DS_Store'
+    - '!**/uv.lock'
+    - '!dist/**'
+    - '!.venv/**'
+
+  path_instructions:
+    - path: '**'
+      instructions: |
+        Never use em dashes or en dashes anywhere, including code comments,
+        docstrings, metadata, and commit messages. Use a period, comma, colon,
+        parentheses, or a plain hyphen instead.
+        This project uses uv only. Flag pip, poetry, or pipenv commands in
+        scripts, CI, and contributor docs (the README install line for end
+        users is fine).
+        Keep functions small and single-purpose.
+        Never run package installs or commit uv.lock changes when applying
+        fixes. The lockfile changes only together with a pyproject.toml change.
+
+    - path: 'src/**/*.py'
+      instructions: |
+        This is a published SDK, so the exported surface is a contract. Flag
+        breaking changes to exported names, method signatures, or return
+        shapes, since fixing them later needs a major release.
+        Flag any new runtime dependency. This package ships with zero and uses
+        the standard library (urllib) for HTTP.
+        The package supports Python 3.9. Flag syntax or stdlib APIs newer than
+        3.9 outside annotations (annotations are deferred by
+        `from __future__ import annotations`).
+        Flag anything that could log or surface the api key or a webhook
+        signing secret, including error messages, repr, and raised exceptions.
+        Flag drift from the REST contract: auth is the x-api-key header and
+        never a query param, request bodies use the modern field names
+        (message, recipients) and never smsBody or receivers, and each endpoint
+        has its own response envelope. get_messages returns {data, meta} with
+        no outer wrapper and get_sms_batch nests under data, so a single
+        generic unwrap is wrong.
+        Keep parity with textbee-js (github.com/textbee/textbee-js): same
+        operations, same base URL normalization, same SMS utility results.
+        Python names are snake_case; response dict keys keep the API's
+        camelCase wire names.
+        Non-ASCII characters in string literals in _sms_utils.py must be
+        written as escapes, so lookalike characters cannot sneak in.
+
+    - path: '.github/workflows/**'
+      instructions: |
+        Flag unpinned action versions, secrets echoed into logs or files, and
+        steps that would run untrusted code from fork pull requests.
+
+  tools:
+    # Waits for ALL GitHub Checks, then comments on failures.
+    github-checks:
+      enabled: true
+
+chat:
+  auto_reply: true
+  # Public repo, so outside contributors can spend the chat quota.
+  # Set to false if that becomes a problem.
+  allow_non_org_members: true
+
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
