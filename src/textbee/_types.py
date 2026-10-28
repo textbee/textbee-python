@@ -121,19 +121,19 @@ class MessageDevice(_MessageDeviceRequired, total=False):
     enabled: bool
 
 
-MessageErrorSource = Literal["push", "device", "server"]
+MessageIssueSource = Literal["push", "device", "server"]
 """Where a failure was reported from."""
 
 
-class _MessageErrorEntryRequired(TypedDict):
+class _MessageIssueEntryRequired(TypedDict):
     code: str
     at: str
     """When the failure happened. ISO date."""
 
-    source: MessageErrorSource
+    source: MessageIssueSource
 
 
-class MessageErrorEntry(_MessageErrorEntryRequired, total=False):
+class MessageIssueEntry(_MessageIssueEntryRequired, total=False):
     """One failure a message had. Kept after the message later succeeds."""
 
     message: str
@@ -174,7 +174,7 @@ class _MessageFields(_MessageRequired, total=False):
     errorMessage: str
     """Current failure text. Present only while status is ``failed``, or as a timeout note on ``unknown``."""
 
-    errorHistory: List[MessageErrorEntry]
+    issueHistory: List[MessageIssueEntry]
     """Every failure the message had, Oldest first. At most 15: the first 5 and the newest 10."""
 
     simSubscriptionId: int
