@@ -121,6 +121,32 @@ class MessageDevice(_MessageDeviceRequired, total=False):
     enabled: bool
 
 
+MessageIssueSource = Literal["push", "device", "server"]
+"""Where a failure was reported from."""
+
+
+class _MessageIssueEntryRequired(TypedDict):
+    code: str
+    at: str
+    """When the failure happened. ISO date."""
+
+    source: MessageIssueSource
+
+
+class MessageIssueEntry(_MessageIssueEntryRequired, total=False):
+    """One failure a message had. Kept after the message later succeeds."""
+
+    message: str
+    backfilled: bool
+    """Set on entries rebuilt from old message fields."""
+
+    deliveryReport: bool
+    """True for a delivery report that did not confirm delivery.
+
+    The message was sent; this is not a send failure.
+    """
+
+
 class _MessageRequired(TypedDict):
     _id: str
     message: str
@@ -142,9 +168,28 @@ class _MessageFields(_MessageRequired, total=False):
     sentAt: str
     deliveredAt: str
     failedAt: str
+    """When the message failed. Present only while status is ``failed``."""
+
     receivedAt: str
     errorCode: str
+    """Current failure code. Present only while status is ``failed``.
+
+    Test accounts can keep ``FCM_SEND_SKIPPED``.
+    """
+
     errorMessage: str
+    """Current failure text.
+
+    Present only while status is ``failed``, or as a timeout note on ``unknown``.
+    """
+
+    issueHistory: List[MessageIssueEntry]
+    """Every failure the message had, plus unconfirmed delivery reports.
+
+    Delivery reports carry ``deliveryReport: true`` and are not failures.
+    Oldest first. At most 15: the first 5 and the newest 10.
+    """
+
     simSubscriptionId: int
     smsBatch: str
     createdAt: str
