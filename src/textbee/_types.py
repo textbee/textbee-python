@@ -140,6 +140,9 @@ class MessageErrorEntry(_MessageErrorEntryRequired, total=False):
     backfilled: bool
     """Set on entries rebuilt from old message fields."""
 
+    deliveryReport: bool
+    """True when the entry is a delivery report that did not confirm delivery. The message was sent; this is not a send failure."""
+
 
 class _MessageRequired(TypedDict):
     _id: str
