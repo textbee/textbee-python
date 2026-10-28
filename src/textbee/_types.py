@@ -141,7 +141,10 @@ class MessageIssueEntry(_MessageIssueEntryRequired, total=False):
     """Set on entries rebuilt from old message fields."""
 
     deliveryReport: bool
-    """True when the entry is a delivery report that did not confirm delivery. The message was sent; this is not a send failure."""
+    """True for a delivery report that did not confirm delivery.
+
+    The message was sent; this is not a send failure.
+    """
 
 
 class _MessageRequired(TypedDict):
@@ -169,13 +172,23 @@ class _MessageFields(_MessageRequired, total=False):
 
     receivedAt: str
     errorCode: str
-    """Current failure code. Present only while status is ``failed`` (test accounts can keep ``FCM_SEND_SKIPPED``)."""
+    """Current failure code. Present only while status is ``failed``.
+
+    Test accounts can keep ``FCM_SEND_SKIPPED``.
+    """
 
     errorMessage: str
-    """Current failure text. Present only while status is ``failed``, or as a timeout note on ``unknown``."""
+    """Current failure text.
+
+    Present only while status is ``failed``, or as a timeout note on ``unknown``.
+    """
 
     issueHistory: List[MessageIssueEntry]
-    """Every failure the message had, plus delivery reports that did not confirm delivery (``deliveryReport: true``, not failures). Oldest first. At most 15: the first 5 and the newest 10."""
+    """Every failure the message had, plus unconfirmed delivery reports.
+
+    Delivery reports carry ``deliveryReport: true`` and are not failures.
+    Oldest first. At most 15: the first 5 and the newest 10.
+    """
 
     simSubscriptionId: int
     smsBatch: str

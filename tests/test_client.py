@@ -341,7 +341,13 @@ class TestResponseEnvelopes:
         }
         page = {
             "data": [
-                {"_id": "sms-2", "message": "hi", "type": "SENT", "status": "sent", "issueHistory": [entry]}
+                {
+                    "_id": "sms-2",
+                    "message": "hi",
+                    "type": "SENT",
+                    "status": "sent",
+                    "issueHistory": [entry],
+                }
             ],
             "meta": {},
         }
