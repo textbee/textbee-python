@@ -329,6 +329,29 @@ class TestResponseEnvelopes:
         assert query["limit"] == "50"
         assert "type" not in query
 
+    def test_returns_error_history_on_a_message_that_failed_and_later_succeeded(
+        self, http: FakeUrlopen
+    ) -> None:
+        entry = {
+            "code": "FCM_SEND_FAILED",
+            "message": "push failed",
+            "at": "2026-10-01T10:00:00.000Z",
+            "source": "push",
+            "backfilled": True,
+        }
+        page = {
+            "data": [
+                {"_id": "sms-2", "message": "hi", "type": "SENT", "status": "sent", "errorHistory": [entry]}
+            ],
+            "meta": {},
+        }
+        http.respond(200, page)
+
+        result = client().get_messages()
+
+        assert result["data"][0]["errorHistory"] == [entry]
+        assert "errorCode" not in result["data"][0]
+
     def test_sends_no_query_at_all_for_a_bare_get_messages(self, http: FakeUrlopen) -> None:
         http.respond(200, {"data": [], "meta": {}})
 

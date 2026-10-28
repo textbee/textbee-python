@@ -121,6 +121,26 @@ class MessageDevice(_MessageDeviceRequired, total=False):
     enabled: bool
 
 
+MessageErrorSource = Literal["push", "device", "server"]
+"""Where a failure was reported from."""
+
+
+class _MessageErrorEntryRequired(TypedDict):
+    code: str
+    at: str
+    """When the failure happened. ISO date."""
+
+    source: MessageErrorSource
+
+
+class MessageErrorEntry(_MessageErrorEntryRequired, total=False):
+    """One failure a message had. Kept after the message later succeeds."""
+
+    message: str
+    backfilled: bool
+    """Set on entries rebuilt from old message fields."""
+
+
 class _MessageRequired(TypedDict):
     _id: str
     message: str
@@ -142,9 +162,18 @@ class _MessageFields(_MessageRequired, total=False):
     sentAt: str
     deliveredAt: str
     failedAt: str
+    """When the message failed. Present only while status is ``failed``."""
+
     receivedAt: str
     errorCode: str
+    """Current failure code. Present only while status is ``failed``."""
+
     errorMessage: str
+    """Current failure text. Present only while status is ``failed``, or as a timeout note on ``unknown``."""
+
+    errorHistory: List[MessageErrorEntry]
+    """Every failure the message had, oldest first, at most 5."""
+
     simSubscriptionId: int
     smsBatch: str
     createdAt: str
