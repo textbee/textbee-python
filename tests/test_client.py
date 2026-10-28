@@ -350,7 +350,6 @@ class TestResponseEnvelopes:
         result = client().get_messages()
 
         assert result["data"][0]["errorHistory"] == [entry]
-        assert "errorCode" not in result["data"][0]
 
     def test_sends_no_query_at_all_for_a_bare_get_messages(self, http: FakeUrlopen) -> None:
         http.respond(200, {"data": [], "meta": {}})

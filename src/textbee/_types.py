@@ -166,7 +166,7 @@ class _MessageFields(_MessageRequired, total=False):
 
     receivedAt: str
     errorCode: str
-    """Current failure code. Present only while status is ``failed``."""
+    """Current failure code. Present only while status is ``failed`` (test accounts can keep ``FCM_SEND_SKIPPED``)."""
 
     errorMessage: str
     """Current failure text. Present only while status is ``failed``, or as a timeout note on ``unknown``."""
