@@ -142,33 +142,54 @@ Responses are plain dicts typed as `TypedDict`s, so keys keep the API's names (`
 
 ## Verifying webhooks
 
-textbee signs each webhook delivery with HMAC-SHA256 and sends the hex digest in the `X-Signature` header. Pass the raw request body, not a re-serialized dict, whenever your framework gives you access to it.
+textbee signs each webhook delivery with your signing secret and sends a timestamped signature in the `X-Textbee-Signature` header:
+
+```
+X-Textbee-Signature: t=1762300000,v1=5f2b...
+```
+
+`v1` is the hex HMAC-SHA256 of `<t>.<raw body>`. `verify_webhook_request` reads the signature header, checks `v1` against the raw body in constant time, and rejects the request when `t` is more than 300 seconds from now. The signed timestamp makes a captured delivery useless after that window.
+
+Verify the raw body exactly as received. A parsed and re-serialized body can differ by one byte and fail.
 
 ```python
 import json
 import os
 
 from flask import Flask, request
-from textbee import verify_webhook_signature
+from textbee import verify_webhook_request
 
 app = Flask(__name__)
 
 
 @app.post("/webhooks/textbee")
 def textbee_webhook():
-    valid = verify_webhook_signature(
-        payload=request.get_data(),
-        signature=request.headers.get("X-Signature"),
+    raw_body = request.get_data()
+    valid = verify_webhook_request(
+        payload=raw_body,
+        headers=request.headers,
         signing_secret=os.environ["TEXTBEE_WEBHOOK_SECRET"],
     )
     if not valid:
         return "", 401
 
-    event = json.loads(request.get_data())
+    event = json.loads(raw_body)
+    # Retries carry the same idempotencyKey. Skip keys you have already handled.
     return "", 200
 ```
 
-`payload` takes `bytes`, `str`, or a dict. A dict is re-serialized the way the API serializes it, which only matches while key order and number formatting survive the round trip, so prefer the raw body.
+`payload` takes `bytes` or `str`. `headers` takes any mapping or headers object with `.items()`, such as Flask's `request.headers`, Django's `request.headers` or a plain dict, and header names match in any case.
+
+Options:
+
+- `tolerance_seconds`: the largest allowed distance between `t` and now, in either direction. Defaults to `300`. Keep your server clock in sync (NTP).
+- `allow_legacy`: an explicit opt-in for old receivers. Off by default. When it is `True` and the signature header is absent, the request is checked against `X-Signature` instead, which has no replay protection.
+
+To check the signature header value yourself, call `verify_timestamped_webhook_signature(payload=..., signature_header=..., signing_secret=...)`. It takes the same `tolerance_seconds` option.
+
+Retries and duplicates: a failed delivery is retried with a fresh `t`, so each attempt passes the freshness check. Every payload carries an `idempotencyKey`. Store the keys you have processed and skip repeats.
+
+**Deprecated:** `verify_webhook_signature` checks only `X-Signature`. It still works because textbee still sends that header, but it has no replay protection. See [textbee.dev/docs/webhooks](https://textbee.dev/docs/webhooks) for the upgrade steps.
 
 ## SMS utilities
 
