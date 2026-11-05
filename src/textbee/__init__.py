@@ -34,7 +34,11 @@ from ._types import (
     WebhookEvent,
 )
 from ._version import __version__
-from ._webhooks import verify_webhook_signature
+from ._webhooks import (
+    verify_timestamped_webhook_signature,
+    verify_webhook_request,
+    verify_webhook_signature,
+)
 
 __all__ = [
     "Device",
@@ -67,5 +71,7 @@ __all__ = [
     "is_valid_e164",
     "normalize_phone_number",
     "sanitize_for_gsm7",
+    "verify_timestamped_webhook_signature",
+    "verify_webhook_request",
     "verify_webhook_signature",
 ]

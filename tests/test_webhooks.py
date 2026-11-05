@@ -5,7 +5,13 @@ import hmac
 import json
 from typing import Any
 
-from textbee import verify_webhook_signature
+import pytest
+
+from textbee import (
+    verify_timestamped_webhook_signature,
+    verify_webhook_request,
+    verify_webhook_signature,
+)
 
 SIGNING_SECRET = "whsec_test_secret"
 
@@ -139,4 +145,254 @@ def test_accepts_a_bytearray_body() -> None:
         payload=bytearray(NODE_BODY.encode("utf-8")),
         signature=NODE_SIGNATURE,
         signing_secret=SIGNING_SECRET,
+    )
+
+
+NOW = 1_762_300_000
+RAW_BODY = to_js_json({**payload, "idempotencyKey": "evt_1"})
+
+
+def sign_timestamped(body: str, t: int | str = NOW, secret: str = SIGNING_SECRET) -> str:
+    """Exactly how the api builds X-Textbee-Signature."""
+    v1 = hmac.new(secret.encode(), f"{t}.{body}".encode(), hashlib.sha256).hexdigest()
+    return f"t={t},v1={v1}"
+
+
+def valid_v1() -> str:
+    return sign_timestamped(RAW_BODY).split("v1=")[1]
+
+
+def verify(header: str | None, *, body: str | bytes = RAW_BODY, now: float = NOW) -> bool:
+    return verify_timestamped_webhook_signature(
+        payload=body, signature_header=header, signing_secret=SIGNING_SECRET, now=now
+    )
+
+
+def test_timestamped_accepts_a_header_produced_the_way_the_api_produces_it() -> None:
+    assert verify(sign_timestamped(RAW_BODY))
+
+
+def test_timestamped_accepts_raw_bytes() -> None:
+    assert verify(sign_timestamped(RAW_BODY), body=RAW_BODY.encode())
+
+
+def test_timestamped_accepts_a_non_ascii_body() -> None:
+    body = to_js_json({**payload, "message": "café 👍"})
+    assert verify(sign_timestamped(body), body=body)
+    assert verify(sign_timestamped(body), body=body.encode("utf-8"))
+
+
+def test_timestamped_rejects_the_wrong_signing_secret() -> None:
+    assert not verify(sign_timestamped(RAW_BODY, secret="whsec_other_secret"))
+
+
+def test_timestamped_rejects_a_tampered_body() -> None:
+    assert not verify(sign_timestamped(RAW_BODY), body=RAW_BODY.replace("hello", "tampered"))
+
+
+def test_timestamped_rejects_a_stale_timestamp() -> None:
+    header = sign_timestamped(RAW_BODY)
+    assert verify(header, now=NOW + 300)
+    assert not verify(header, now=NOW + 301)
+
+
+def test_timestamped_rejects_a_future_timestamp() -> None:
+    header = sign_timestamped(RAW_BODY)
+    assert verify(header, now=NOW - 300)
+    assert not verify(header, now=NOW - 301)
+
+
+def test_timestamped_honors_a_custom_tolerance() -> None:
+    assert not verify_timestamped_webhook_signature(
+        payload=RAW_BODY,
+        signature_header=sign_timestamped(RAW_BODY),
+        signing_secret=SIGNING_SECRET,
+        tolerance_seconds=10,
+        now=NOW + 11,
+    )
+
+
+def test_timestamped_rejects_a_nan_clock() -> None:
+    assert not verify(sign_timestamped(RAW_BODY), now=float("nan"))
+
+
+def test_timestamped_rejects_a_signature_moved_to_another_t() -> None:
+    assert not verify(f"t={NOW + 1},v1={valid_v1()}")
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        None,
+        "",
+        "garbage",
+        "v1=" + "a" * 64,
+        f"t={NOW}",
+        f"t={NOW},v1=",
+        f"t=-{NOW},v1=" + "a" * 64,
+        f"t={NOW}.5,v1=" + "a" * 64,
+        "t=abc,v1=" + "a" * 64,
+        "t=,v1=" + "a" * 64,
+        "t=\u0661\u0662,v1=" + "a" * 64,
+        "t=" + "9" * 5000 + ",v1=" + "a" * 64,
+    ],
+)
+def test_timestamped_rejects_malformed_headers(header: str | None) -> None:
+    assert not verify(header)
+
+
+def test_timestamped_rejects_a_valid_v1_with_a_malformed_t() -> None:
+    assert not verify(f"t={NOW}x,v1={valid_v1()}")
+
+
+def test_timestamped_accepts_any_matching_v1() -> None:
+    other = "a" * 64
+    assert verify(f"t={NOW},v1={other},v1={valid_v1()}")
+    assert verify(f"t={NOW}, v1={valid_v1()}, v1={other}")
+    assert verify(f"t={NOW},v0={other},v1={valid_v1()}")
+    assert not verify(f"t={NOW},v1={other},v1={other}")
+
+
+def test_timestamped_rejects_a_duplicate_t() -> None:
+    assert not verify(f"t={NOW},t={NOW},v1={valid_v1()}")
+    assert not verify(f"t={NOW},v1={valid_v1()},t={NOW - 1000}")
+
+
+def test_timestamped_rejects_a_non_ascii_v1_without_raising() -> None:
+    assert not verify(f"t={NOW},v1=" + "é" * 64)
+
+
+def test_timestamped_accepts_an_uppercase_hex_v1() -> None:
+    assert verify(f"t={NOW},v1={valid_v1().upper()}")
+
+
+LEGACY_SIGNATURE = hmac.new(SIGNING_SECRET.encode(), RAW_BODY.encode(), hashlib.sha256).hexdigest()
+
+
+def test_request_verifies_the_signature_header() -> None:
+    assert verify_webhook_request(
+        payload=RAW_BODY.encode(),
+        headers={"X-Textbee-Signature": sign_timestamped(RAW_BODY)},
+        signing_secret=SIGNING_SECRET,
+        now=NOW,
+    )
+
+
+def test_request_matches_header_names_in_any_case() -> None:
+    for name in ("x-textbee-signature", "X-TEXTBEE-SIGNATURE", "X-Textbee-Signature"):
+        assert verify_webhook_request(
+            payload=RAW_BODY,
+            headers={name: sign_timestamped(RAW_BODY)},
+            signing_secret=SIGNING_SECRET,
+            now=NOW,
+        )
+
+
+def test_request_rejects_a_stale_signature_header() -> None:
+    assert not verify_webhook_request(
+        payload=RAW_BODY,
+        headers={"X-Textbee-Signature": sign_timestamped(RAW_BODY)},
+        signing_secret=SIGNING_SECRET,
+        now=NOW + 301,
+    )
+
+
+def test_request_ignores_x_signature_by_default() -> None:
+    assert not verify_webhook_request(
+        payload=RAW_BODY,
+        headers={"X-Signature": LEGACY_SIGNATURE},
+        signing_secret=SIGNING_SECRET,
+        now=NOW,
+    )
+
+
+def test_request_falls_back_to_x_signature_only_with_allow_legacy() -> None:
+    assert verify_webhook_request(
+        payload=RAW_BODY.encode(),
+        headers={"x-signature": LEGACY_SIGNATURE},
+        signing_secret=SIGNING_SECRET,
+        allow_legacy=True,
+    )
+    assert not verify_webhook_request(
+        payload=RAW_BODY,
+        headers={
+            "x-signature": hmac.new(
+                b"whsec_other_secret", RAW_BODY.encode(), hashlib.sha256
+            ).hexdigest()
+        },
+        signing_secret=SIGNING_SECRET,
+        allow_legacy=True,
+    )
+    assert not verify_webhook_request(
+        payload=RAW_BODY,
+        headers={"x-signature": "é" * 64},
+        signing_secret=SIGNING_SECRET,
+        allow_legacy=True,
+    )
+
+
+def test_request_does_not_fall_back_when_the_signature_header_is_present() -> None:
+    assert not verify_webhook_request(
+        payload=RAW_BODY,
+        headers={
+            "X-Textbee-Signature": sign_timestamped(RAW_BODY),
+            "X-Signature": LEGACY_SIGNATURE,
+        },
+        signing_secret=SIGNING_SECRET,
+        now=NOW + 301,
+        allow_legacy=True,
+    )
+
+
+def test_request_does_not_fall_back_when_the_signature_header_is_empty() -> None:
+    assert not verify_webhook_request(
+        payload=RAW_BODY,
+        headers={"X-Textbee-Signature": "", "X-Signature": LEGACY_SIGNATURE},
+        signing_secret=SIGNING_SECRET,
+        now=NOW,
+        allow_legacy=True,
+    )
+
+
+def test_request_reads_every_case_variant_of_the_signature_header() -> None:
+    assert not verify_webhook_request(
+        payload=RAW_BODY,
+        headers={
+            "X-Textbee-Signature": sign_timestamped(RAW_BODY),
+            "x-textbee-signature": f"t={NOW - 1000},v1={valid_v1()}",
+        },
+        signing_secret=SIGNING_SECRET,
+        now=NOW,
+    )
+
+
+def test_timestamped_accepts_a_custom_tolerance_above_300_seconds() -> None:
+    assert verify_timestamped_webhook_signature(
+        payload=RAW_BODY,
+        signature_header=sign_timestamped(RAW_BODY),
+        signing_secret=SIGNING_SECRET,
+        tolerance_seconds=600,
+        now=NOW + 301,
+    )
+
+
+@pytest.mark.parametrize("body", [None, {}])
+def test_request_returns_false_when_the_body_was_not_read(body: Any) -> None:
+    assert not verify_webhook_request(
+        payload=body,
+        headers={"X-Textbee-Signature": sign_timestamped(RAW_BODY)},
+        signing_secret=SIGNING_SECRET,
+        now=NOW,
+    )
+    assert not verify_webhook_request(
+        payload=body,
+        headers={"X-Signature": LEGACY_SIGNATURE},
+        signing_secret=SIGNING_SECRET,
+        allow_legacy=True,
+    )
+
+
+def test_request_rejects_a_request_with_no_signature_headers() -> None:
+    assert not verify_webhook_request(
+        payload=RAW_BODY, headers={}, signing_secret=SIGNING_SECRET, allow_legacy=True
     )
