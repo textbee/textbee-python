@@ -67,7 +67,7 @@ def verify_timestamped_webhook_signature(
     direction. ``payload`` is the raw request body, exactly as received.
     ``now`` defaults to the system clock, in unix seconds.
     """
-    if not signature_header or not signing_secret:
+    if not signature_header or not signing_secret or not _is_raw_body(payload):
         return False
 
     parsed = _parse_signature_header(signature_header)
@@ -119,7 +119,7 @@ def verify_webhook_request(
         return False
 
     legacy_signature = _get_header(headers, "x-signature")
-    if not legacy_signature or not signing_secret:
+    if not legacy_signature or not signing_secret or not _is_raw_body(payload):
         return False
 
     expected = _hmac_hex(signing_secret, _raw_bytes(payload))
@@ -163,6 +163,11 @@ def _get_header(headers: Mapping[str, str] | _Headers, name: str) -> str | None:
 
 def _hmac_hex(secret: str, message: bytes) -> bytes:
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest().encode("ascii")
+
+
+def _is_raw_body(payload: object) -> bool:
+    # A framework that did not read the body can hand over None or a dict.
+    return isinstance(payload, (str, bytes, bytearray))
 
 
 def _raw_bytes(payload: str | bytes | bytearray) -> bytes:
