@@ -84,6 +84,7 @@ class Textbee:
         message: str,
         recipients: Sequence[str],
         device_id: str | None = None,
+        sim_slot_index: int | None = None,
         sim_subscription_id: int | None = None,
         scheduled_at: DateInput | None = None,
     ) -> SendSmsResponse:
@@ -101,10 +102,19 @@ class Textbee:
         id fails with 400 rather than falling back, so a typo cannot send from
         the wrong phone.
 
-        ``sim_subscription_id`` picks the SIM on a multi-SIM phone. It is not
-        validated: an id that does not match a SIM in the phone is ignored and
-        the message goes out from the SIM configured in the app, or the system
-        default. Find the id in the Android app under Dashboard, "SIM Cards".
+        ``sim_slot_index`` picks the SIM by its slot in the phone: ``0`` is
+        SIM 1 and ``1`` is SIM 2. It works with or without ``device_id``. If the
+        slot has no active SIM, the message fails with the error code
+        ``SIM_SLOT_EMPTY`` and is never sent from another SIM. The slot is the
+        place in the phone, not a specific card: a different card in that slot
+        sends from the new card. With textbee app versions before slot support,
+        the server refuses a slot it cannot map from the phone's last SIM report
+        with HTTP 400, so the call raises.
+
+        ``sim_subscription_id`` is deprecated: use ``sim_slot_index``. It is an
+        Android id that changes when a SIM is reinserted, and a stale id sends
+        from the default SIM with no error. It still works. If you pass both,
+        textbee uses ``sim_slot_index`` and ignores the id.
 
         ``scheduled_at`` sends later instead of now, as an ISO 8601 string or a
         timezone-aware ``datetime`` in the future.
@@ -118,6 +128,8 @@ class Textbee:
         }
         if device_id is not None:
             body["deviceId"] = device_id
+        if sim_slot_index is not None:
+            body["simSlotIndex"] = sim_slot_index
         if sim_subscription_id is not None:
             body["simSubscriptionId"] = sim_subscription_id
         if scheduled_at is not None:

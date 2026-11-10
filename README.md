@@ -45,7 +45,8 @@ textbee.send_sms(
 | Option | Type | What it does |
 | --- | --- | --- |
 | `device_id` | `str` | Which phone sends the message. Omit it and textbee uses your default device, or the enabled device with the most recent heartbeat. |
-| `sim_subscription_id` | `int` | Which SIM sends the message on a multi-SIM phone. Omit it and the phone uses its configured preferred SIM, or the system default. |
+| `sim_slot_index` | `int` | Which SIM sends the message, by its slot in the phone. `0` is SIM 1, `1` is SIM 2. Omit it and the phone uses its default SIM. |
+| `sim_subscription_id` | `int` | Deprecated. Use `sim_slot_index`. See [Choosing a SIM](#choosing-a-sim). |
 | `scheduled_at` | `str \| datetime` | Send later instead of now. An ISO 8601 string or a timezone-aware `datetime`, in the future. |
 
 ```python
@@ -55,7 +56,7 @@ textbee.send_sms(
     recipients=["+12025550123"],
     message="Your appointment is tomorrow at 9am",
     device_id="65f0000000000000000000aa",
-    sim_subscription_id=2,
+    sim_slot_index=1,
     scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
 )
 ```
@@ -74,11 +75,15 @@ if "warning" in result:
     print(result["warning"]["message"])
 ```
 
-### Finding your sim_subscription_id
+### Choosing a SIM
 
-Open the textbee Android app, go to **Dashboard**, and find the **SIM Cards** section. Each SIM shows its subscription id with a copy button.
+Use `sim_slot_index=0` for SIM 1 and `sim_slot_index=1` for SIM 2. The slot is the place of the SIM in the phone. It stays the same when you take the SIM out and put it back.
 
-Be aware that this value is not validated. If the id does not match a SIM currently in the phone it is ignored, and the message goes out from the preferred or default SIM instead. Nothing errors, so confirm which SIM was used by checking the number the message arrived from.
+The slot is the place in the phone, not a specific card. A different card in that slot sends from the new card.
+
+It works with or without `device_id`. If the slot has no active SIM, the message fails with the error code `SIM_SLOT_EMPTY`. textbee never sends it from another SIM. With textbee app versions before slot support, the server refuses a slot it cannot map from the phone's last SIM report with HTTP 400, so the call raises an error.
+
+`sim_subscription_id` still works, but it is deprecated. It is an Android id that changes when a SIM is reinserted. A stale id sends from the default SIM and nothing errors. If you pass both options, textbee uses `sim_slot_index` and ignores the id.
 
 ## Devices
 

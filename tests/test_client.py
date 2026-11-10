@@ -160,6 +160,38 @@ class TestSendSms:
 
         assert set(http.last.body) == {"message", "recipients"}
 
+    def test_sim_slot_index_is_sent_including_zero(self, http: FakeUrlopen) -> None:
+        http.respond(200, {"data": {"successCount": 1}})
+
+        client().send_sms(message="a", recipients=["+15555550123"], sim_slot_index=0)
+
+        assert http.last.body == {
+            "message": "a",
+            "recipients": ["+15555550123"],
+            "simSlotIndex": 0,
+        }
+
+    def test_both_sim_options_are_sent(self, http: FakeUrlopen) -> None:
+        http.respond(200, {"data": {"successCount": 1}})
+
+        client().send_sms(
+            message="both",
+            recipients=["+15555550123"],
+            sim_slot_index=1,
+            sim_subscription_id=2,
+        )
+
+        assert http.last.body["simSlotIndex"] == 1
+        assert http.last.body["simSubscriptionId"] == 2
+
+    def test_no_sim_option_sends_no_sim_keys(self, http: FakeUrlopen) -> None:
+        http.respond(200, {"data": {"successCount": 1}})
+
+        client().send_sms(message="none", recipients=["+15555550123"])
+
+        assert "simSlotIndex" not in http.last.body
+        assert "simSubscriptionId" not in http.last.body
+
     def test_accepts_any_sequence_of_recipients(self, http: FakeUrlopen) -> None:
         http.respond(200, {"data": {"successCount": 2}})
 
