@@ -190,6 +190,7 @@ class _MessageFields(_MessageRequired, total=False):
     Oldest first. At most 15: the first 5 and the newest 10.
     """
 
+    simSlotIndex: int
     simSubscriptionId: int
     smsBatch: str
     createdAt: str
