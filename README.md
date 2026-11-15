@@ -279,8 +279,11 @@ Textbee(
     api_key="your-api-key",
     base_url="https://api.textbee.dev/api/v1",  # the default
     timeout=30.0,  # seconds for each connect and each read
+    client_name="my-app/1.2.0",  # optional
 )
 ```
+
+Set `client_name` when you publish a tool or integration built on this SDK. It names your tool in the request headers, ahead of the SDK's own name. Use `name/version`.
 
 ### Self-hosted textbee
 

@@ -26,6 +26,7 @@ from ._version import __version__
 DEFAULT_BASE_URL = "https://api.textbee.dev/api/v1"
 DEFAULT_TIMEOUT = 30.0
 CLIENT_ID = f"textbee-python/{__version__}"
+_CLIENT_NAME_PART = re.compile(r"[A-Za-z0-9._-]{1,64}/[A-Za-z0-9._+-]{1,32}")
 
 DateInput = Union[str, datetime]
 QueryValue = Union[str, int, None]
@@ -46,6 +47,7 @@ class Textbee:
         *,
         base_url: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
+        client_name: str | None = None,
     ) -> None:
         """Create a client.
 
@@ -63,6 +65,11 @@ class Textbee:
 
         ``timeout`` is in seconds and applies to each connect and read, not to
         the request as a whole.
+
+        ``client_name`` names an app or tool built on this SDK, for example
+        ``my-app/1.2.0``. It is sent ahead of the SDK's own name in the client
+        headers. Each space-separated part must look like ``name/version``, or
+        ``ValueError`` is raised.
         """
         api_key = (api_key or "").strip()
         if not api_key:
@@ -74,6 +81,7 @@ class Textbee:
         self._api_key = api_key
         self._base_url = _normalize_base_url(base_url)
         self._timeout = timeout
+        self._client_id = _client_id(client_name)
 
     def __repr__(self) -> str:
         return f"Textbee(base_url={self._base_url!r})"
@@ -292,8 +300,8 @@ class Textbee:
 
         headers = {
             "x-api-key": self._api_key,
-            "user-agent": CLIENT_ID,
-            "x-sdk-client": CLIENT_ID,
+            "user-agent": self._client_id,
+            "x-sdk-client": self._client_id,
             "accept": "application/json",
         }
         data = None
@@ -466,3 +474,12 @@ def _error_message(payload: Any, status: int) -> str:
                 return "; ".join(value)
 
     return f"HTTP {status}"
+
+
+def _client_id(client_name: str | None) -> str:
+    if client_name is None:
+        return CLIENT_ID
+    parts = client_name.split() if isinstance(client_name, str) else []
+    if not parts or len(parts) > 4 or not all(_CLIENT_NAME_PART.fullmatch(p) for p in parts):
+        raise ValueError("client_name must look like name/version, for example my-app/1.2.0")
+    return " ".join([*parts, CLIENT_ID])
