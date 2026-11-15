@@ -299,7 +299,7 @@ class TestErrors:
         assert API_KEY not in repr(client())
 
 
-class TestTelemetryHeaders:
+class TestClientHeaders:
     def test_identifies_the_sdk_and_its_version_on_every_request(self, http: FakeUrlopen) -> None:
         client().get_devices()
 
@@ -307,6 +307,21 @@ class TestTelemetryHeaders:
         assert http.last.headers["user-agent"] == expected
         assert http.last.headers["x-sdk-client"] == expected
         assert http.last.headers["accept"] == "application/json"
+
+    def test_puts_a_client_name_ahead_of_the_sdk(self, http: FakeUrlopen) -> None:
+        Textbee(API_KEY, client_name=" my-tool/1.2.0  host/2.0.0-beta.1 ").get_devices()
+
+        expected = f"my-tool/1.2.0 host/2.0.0-beta.1 textbee-python/{__version__}"
+        assert http.last.headers["user-agent"] == expected
+        assert http.last.headers["x-sdk-client"] == expected
+
+    @pytest.mark.parametrize(
+        "client_name",
+        ["", "my tool", "my-tool", "a/1 b/2 c/3 d/4 e/5", "my-tool/1.0\nx: y"],
+    )
+    def test_rejects_a_malformed_client_name(self, client_name: str) -> None:
+        with pytest.raises(ValueError):
+            Textbee(API_KEY, client_name=client_name)
 
 
 class TestResponseEnvelopes:
